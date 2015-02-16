@@ -1,7 +1,6 @@
-var express = require("express"),
-		app = express(),
-		MBTiles = require('mbtiles'),
-		fs = require('fs');
+var http = require('http'),
+	MBTiles = require('mbtiles'),
+	fs = require('fs');
 
 if (process.argv.length < 3) {
 	console.log("Error! Missing TILES filename.\nUsage: node server.js TILES [PORT]");
@@ -33,39 +32,57 @@ fs.watchFile(mbtilesLocation, function(curr,prev) {
 	},120000);
 });
 
-app.get('/:z/:x/:y.*', function getTile(req, res) {
+http.createServer(function getTile(request, res){
 	if (!mbtiles) { // not ready yet, try with small delay
 		return setTimeout( function(){
-			getTile(req, res);
+			getTile(request, res);
 		}, 10);
 	}
-	var extension = req.param(0);
-	switch (extension) {
-		case "png": {
-			mbtiles.getTile(req.param('z'), req.param('x'), req.param('y'), function(err, tile, headers) {
-				if (err) {
-					res.status(404).send('Tile rendering error: ' + err + '\n');
-				} else {
-					res.header("Content-Type", "image/png")
-					res.send(tile);
-				}
-			});
-			break;
-		}
-		case "grid.json": {
-			mbtiles.getGrid(req.param('z'), req.param('x'), req.param('y'), function(err, grid, headers) {
-				if (err) {
-					res.status(404).send('Grid rendering error: ' + err + '\n');
-				} else {
-					res.header("Content-Type", "text/json");
-					res.header('Cache-Control', 'max-age=' + 60 * 60);
-					res.send(grid);
-				}
-			});
-			break;
-		}
-	}
-});
+	var parts = request.url.match( /\/(\d+)\/(\d+)\/(\d+)\.(.*)/ );
+	if (!parts) {
+		res.writeHead(404, {'Content-Type': 'text/plain'});
+		res.end("404 Not found");
+	} else {
+		var z = parts[1],
+			x = parts[2],
+			y = parts[3],
+			ext = parts[4];
 
-// actually create the server
-app.listen(port);
+			switch (ext) {
+				case "png":
+					mbtiles.getTile(z, x, y, function(err, tile, headers) {
+						if (err) {
+							res.writeHead(404, {'Content-Type': 'text/plain'});
+							res.end('Tile rendering error: ' + err + '\n');
+						} else {
+							res.writeHead(200, {
+								'Content-Type': 'image/png'
+//								, 'Cache-Control': 'max-age=' + 60 * 60   // nginx will cache in our case
+							});
+							res.write(tile);
+							res.end();
+						}
+					});
+					break;
+				case "grid.json":
+					mbtiles.getGrid(z, x, y, function(err, grid, headers) {
+						if (err) {
+							res.writeHead(404, {'Content-Type': 'text/plain'});
+							res.end('Grid rendering error: ' + err + '\n');
+						} else {
+							res.writeHead(200, {
+								'Content-Type': 'text/json'
+//								, 'Cache-Control': 'max-age=' + 60 * 60   // nginx will cache in our case
+							});
+							res.write(grid);
+							res.end();
+						}
+					});
+					break;
+				default :
+					res.writeHead(404, {'Content-Type': 'text/plain'});
+					res.end("404 Not found");
+					break;
+			}
+	}
+}).listen(port);

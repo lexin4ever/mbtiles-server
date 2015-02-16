@@ -5,8 +5,7 @@
   , "private": false
   , "author": "Chris Helm"
   , "dependencies": {
-    "express": "*"
-    , "mbtiles": "*"
+    "mbtiles": "*"
   }
   , "engines": {
     "node": "0.8.x"
